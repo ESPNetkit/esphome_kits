@@ -119,23 +119,23 @@ globals:
   - id: bms_voltage
     type: int
     restore_value: no
-    initial_value: '48000'
+    initial_value: '0'
   - id: bms_capacity
     type: int
     restore_value: no
-    initial_value: '100000'
+    initial_value: '0'
   - id: bms_temperature
     type: int
     restore_value: no
-    initial_value: '250'
+    initial_value: '0'
   - id: bms_soc
     type: int
     restore_value: no
-    initial_value: '800'
+    initial_value: '0'
   - id: bms_charging_current
     type: int
     restore_value: no
-    initial_value: '10000'
+    initial_value: '0'
   - id: charger_output_voltage
     type: int
     restore_value: no
