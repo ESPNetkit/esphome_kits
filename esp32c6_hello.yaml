@@ -1,7 +1,14 @@
 esphome:
   name: test-01
   friendly_name: test-01
-
+  on_boot:
+    priority: 600
+    then:
+      - output.turn_on: rgb_enable
+      - logger.log:
+          level: INFO
+          format: "RGB enable output turned on"
+      - script.execute: check_charger_limits
 
 esp32:
   board: esp32-c6-devkitm-1
@@ -9,10 +16,9 @@ esp32:
   framework:
       type: esp-idf
 
-
 # Enable logging
 logger:
-  level: DEBUG
+  level: INFO
   baud_rate: 115200
   hardware_uart: USB_SERIAL_JTAG
 
@@ -23,37 +29,35 @@ wifi:
 captive_portal:
 
 interval:
-  - interval: 5s
+  - interval: 1s
     then:
-      - output.turn_on: rgb_enable
-      - delay: 1s
-      - switch.toggle: blue_led
-      - light.turn_on:
-          id: rgb_led
-          red: 100%
-          green: 0%
-          blue: 0%
-      - delay: 1s
-      - light.turn_on:
-          id: rgb_led
-          red: 0%
-          green: 100%
-          blue: 0%
-      - delay: 1s
-      - light.turn_on:
-          id: rgb_led
-          red: 0%
-          green: 0%
-          blue: 100%
+      - script.execute: check_charger_limits
 
-  - interval: 5s
+  - interval: 30s
     then:
       - logger.log:
-          level: DEBUG
-          format: "Timer debug message"
-      - lambda: |-
-          bool gpio7_state = id(blue_led).state;
-          ESP_LOGD("main", "GPIO7 state: %s", gpio7_state ? "ON" : "OFF");
+          level: INFO
+          format: |-
+            ------ Current BMS Data:
+            Voltage: %.2f V
+            Capacity: %.2f Ah
+            Temperature: %.2f °C
+            SoC: %.2f %%
+            Charging Current: %.2f A
+            ------ Last Charger Output:
+            Voltage: %.2f V (Requested: %.2f V)
+            Current: %.2f A (Requested: %.2f A)
+          args: [ 'id(bms_voltage) / 1000.0', 'id(bms_capacity) / 1000.0', 'id(bms_temperature) / 10.0', 'id(bms_soc) / 10.0', 'id(bms_charging_current) / 1000.0', 'id(charger_output_voltage) / 1000.0', 'id(bms_voltage) / 1000.0', 'id(charger_output_current) / 1000.0', 'id(bms_charging_current) / 1000.0' ]
+
+  - interval: 1s
+    then:
+      - if:
+          condition:
+            lambda: 'return id(charger_output_current) == 0;'
+          then:
+            - script.execute: ui_charged
+          else:
+            - script.execute: ui_charging
 
 switch:
   - platform: gpio
@@ -77,3 +81,164 @@ light:
     chipset: ws2812
     name: "WS2812 RGB LED"
     id: rgb_led
+
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO9
+      mode: INPUT_PULLUP
+      inverted: true
+    name: "BMS Modify Button"
+    on_press:
+      then:
+        - lambda: |-
+            // Generate random values for BMS data
+            int random_voltage = 40000 + (rand() % 20000); // 40000mV ~ 60000mV
+            int random_capacity = 80000 + (rand() % 2000);  // 80000mAh ~ 100000mAh
+            int random_temperature = 200 + (rand() % 150); // 200 ~ 350 (20.0°C ~ 35.0°C)
+            int random_soc = rand() % 1001;  // 0 ~ 1000 (0.0% ~ 100.0%)
+            int random_charging_current = rand() % 3000; // 0 ~ 30000mA (0.0A ~ 30.0A)
+
+            // Log new random BMS data
+            ESP_LOGI("BMS_SIMULATOR", "----------------------------------");
+            ESP_LOGI("BMS_SIMULATOR", "Generated BMS Data:");
+            ESP_LOGI("BMS_SIMULATOR", "Voltage: %.2f V", random_voltage / 1000.0);
+            ESP_LOGI("BMS_SIMULATOR", "Capacity: %.2f Ah", random_capacity / 1000.0);
+            ESP_LOGI("BMS_SIMULATOR", "Temperature: %.2f °C", random_temperature / 10.0);
+            ESP_LOGI("BMS_SIMULATOR", "SoC: %.2f %%", random_soc / 10.0);
+            ESP_LOGI("BMS_SIMULATOR", "Charging Current: %.2f A", random_charging_current / 1000.0);
+
+            // Optionally, save data to global variables or send it to other components
+            id(bms_voltage) = random_voltage;
+            id(bms_capacity) = random_capacity;
+            id(bms_temperature) = random_temperature;
+            id(bms_soc) = random_soc;
+            id(bms_charging_current) = random_charging_current;
+
+globals:
+  - id: bms_voltage
+    type: int
+    restore_value: no
+    initial_value: '48000'
+  - id: bms_capacity
+    type: int
+    restore_value: no
+    initial_value: '100000'
+  - id: bms_temperature
+    type: int
+    restore_value: no
+    initial_value: '250'
+  - id: bms_soc
+    type: int
+    restore_value: no
+    initial_value: '800'
+  - id: bms_charging_current
+    type: int
+    restore_value: no
+    initial_value: '10000'
+  - id: charger_output_voltage
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: charger_output_current
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: charger_max_voltage
+    type: int
+    restore_value: no
+    initial_value: '58000'
+  - id: charger_min_voltage
+    type: int
+    restore_value: no
+    initial_value: '42000'
+  - id: charger_max_current
+    type: int
+    restore_value: no
+    initial_value: '25000'
+  - id: charger_min_current
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+script:
+  - id: check_charger_limits
+    mode: queued
+    then:
+      - lambda: |-
+          ESP_LOGV("CHARGER", "check_charger_limits script called");
+          // Check BMS requests and local max/min limits
+          int requested_voltage = id(bms_voltage);
+          int requested_current = id(bms_charging_current);
+
+          ESP_LOGV("CHARGER", "Checking charger output limits...");
+          ESP_LOGV("CHARGER", "Requested Voltage: %.2f V", requested_voltage / 1000.0);
+          ESP_LOGV("CHARGER", "Requested Current: %.2f A", requested_current / 1000.0);
+          ESP_LOGV("CHARGER", "Current Output Voltage: %.2f V", id(charger_output_voltage) / 1000.0);
+          ESP_LOGV("CHARGER", "Current Output Current: %.2f A", id(charger_output_current) / 1000.0);
+          bool voltage_changed = false;
+          bool current_changed = false;
+
+          // Apply voltage limits
+          if (requested_voltage > id(charger_max_voltage)) {
+            if (id(charger_output_voltage) != id(charger_max_voltage)) {
+              id(charger_output_voltage) = id(charger_max_voltage);
+              voltage_changed = true;
+            }
+          } else if (requested_voltage < id(charger_min_voltage)) {
+            if (id(charger_output_voltage) != id(charger_min_voltage)) {
+              id(charger_output_voltage) = id(charger_min_voltage);
+              voltage_changed = true;
+            }
+          } else {
+            if (id(charger_output_voltage) != requested_voltage) {
+              id(charger_output_voltage) = requested_voltage;
+              voltage_changed = true;
+            }
+          }
+
+          // Apply current limits
+          if (requested_current > id(charger_max_current)) {
+            if (id(charger_output_current) != id(charger_max_current)) {
+              id(charger_output_current) = id(charger_max_current);
+              current_changed = true;
+            }
+          } else if (requested_current < id(charger_min_current)) {
+            if (id(charger_output_current) != id(charger_min_current)) {
+              id(charger_output_current) = id(charger_min_current);
+              current_changed = true;
+            }
+          } else {
+            if (id(charger_output_current) != requested_current) {
+              id(charger_output_current) = requested_current;
+              current_changed = true;
+            }
+          }
+
+          // Log the charger output status if changed
+          if (voltage_changed || current_changed) {
+                ESP_LOGI("CHARGER", "-------------------------");
+                ESP_LOGI("CHARGER", "Charger Output Status:");
+                ESP_LOGI("CHARGER", "Voltage: %.2f V (Requested: %.2f V)", id(charger_output_voltage) / 1000.0, requested_voltage / 1000.0);
+                ESP_LOGI("CHARGER", "Current: %.2f A (Requested: %.2f A)", id(charger_output_current) / 1000.0, requested_current / 1000.0);
+          } else {
+                ESP_LOGV("CHARGER", "No changes in charger output.");
+          }
+
+  - id: ui_charging
+    mode: queued
+    then:
+      - light.turn_on:
+          id: rgb_led
+          red: 100%
+          green: 0%
+          blue: 0%
+
+  - id: ui_charged
+    mode: queued
+    then:
+      - light.turn_on:
+          id: rgb_led
+          red: 0%
+          green: 100%
+          blue: 0%
