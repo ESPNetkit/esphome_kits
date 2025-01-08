@@ -1,0 +1,79 @@
+esphome:
+  name: test-01
+  friendly_name: test-01
+
+
+esp32:
+  board: esp32-c6-devkitm-1
+  variant: esp32c6
+  framework:
+      type: esp-idf
+
+
+# Enable logging
+logger:
+  level: DEBUG
+  baud_rate: 115200
+  hardware_uart: USB_SERIAL_JTAG
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+captive_portal:
+
+interval:
+  - interval: 5s
+    then:
+      - output.turn_on: rgb_enable
+      - delay: 1s
+      - switch.toggle: blue_led
+      - light.turn_on:
+          id: rgb_led
+          red: 100%
+          green: 0%
+          blue: 0%
+      - delay: 1s
+      - light.turn_on:
+          id: rgb_led
+          red: 0%
+          green: 100%
+          blue: 0%
+      - delay: 1s
+      - light.turn_on:
+          id: rgb_led
+          red: 0%
+          green: 0%
+          blue: 100%
+
+  - interval: 5s
+    then:
+      - logger.log:
+          level: DEBUG
+          format: "Timer debug message"
+      - lambda: |-
+          bool gpio7_state = id(blue_led).state;
+          ESP_LOGD("main", "GPIO7 state: %s", gpio7_state ? "ON" : "OFF");
+
+switch:
+  - platform: gpio
+    pin: GPIO7
+    name: "On-board blue LED"
+    id: blue_led
+    inverted: no
+    restore_mode: RESTORE_DEFAULT_OFF
+
+output:
+  - platform: gpio
+    pin: GPIO19
+    id: rgb_enable
+
+light:
+  - platform: esp32_rmt_led_strip
+    rgb_order: GRB
+    pin: GPIO20
+    num_leds: 1
+    rmt_channel: 0
+    chipset: ws2812
+    name: "WS2812 RGB LED"
+    id: rgb_led
