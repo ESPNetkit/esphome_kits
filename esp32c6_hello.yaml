@@ -247,11 +247,11 @@ script:
     mode: restart
     then:
       - switch.turn_on: blue_led
-      - delay: 200ms
+      - delay: 150ms
       - switch.turn_off: blue_led
-      - delay: 200ms
+      - delay: 150ms
       - switch.turn_on: blue_led
-      - delay: 200ms
+      - delay: 150ms
       - switch.turn_off: blue_led
       - delay: 1600ms
       - script.execute: heartbeat
