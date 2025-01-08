@@ -8,7 +8,7 @@ esphome:
       - logger.log:
           level: INFO
           format: "RGB enable output turned on"
-      - script.execute: check_charger_limits
+      - script.execute: heartbeat
 
 esp32:
   board: esp32-c6-devkitm-1
@@ -242,3 +242,16 @@ script:
           red: 0%
           green: 100%
           blue: 0%
+
+  - id: heartbeat
+    mode: restart
+    then:
+      - switch.turn_on: blue_led
+      - delay: 200ms
+      - switch.turn_off: blue_led
+      - delay: 200ms
+      - switch.turn_on: blue_led
+      - delay: 200ms
+      - switch.turn_off: blue_led
+      - delay: 1600ms
+      - script.execute: heartbeat
